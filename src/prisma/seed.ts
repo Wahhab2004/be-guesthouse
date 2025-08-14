@@ -42,6 +42,9 @@ async function main() {
       checkIn: new Date("2025-08-15"),
       checkOut: new Date("2025-08-17"),
       guestTotal: 2,
+      bookerId: guest.id, // Menggunakan ID Guest sebagai Booker
+      adultCount: 1,
+      childCount: 1,
       totalPrice: 1000000,
       status: ReservationStatus.CONFIRMED,
       additionalGuests: {
