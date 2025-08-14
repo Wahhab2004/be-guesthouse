@@ -1,0 +1,186 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Guest {
+  id             String          @id @default(uuid())
+  name           String
+  username       String          @unique
+  email          String          @unique
+  phone          String?
+  password       String?
+  passport       String?
+  dateOfBirth    String?
+  country        String?
+  gender         Gender?
+  createdAt      DateTime        @default(now())
+  bookedReservations Reservation[] @relation("BookerReservations")
+  stayedReservations Reservation[] @relation("GuestReservations")
+  AuthenticationGuest AuthenticationGuest?
+}
+
+enum Gender {
+  Male
+  Female
+}
+
+
+model AdminTable {
+  id        String   @id @default(uuid())
+  name      String
+  username  String   @unique
+  email     String   @unique
+  password  String
+  AuthenticationAdmin AuthenticationAdmin?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model Room {
+  id           String        @id @default(uuid())
+  name         String
+  description  String
+  price        Float
+  status       RoomStatus    @default(AVAILABLE) // Bisa diabaikan
+  photoUrl     String?
+  reservations Reservation[]
+  Calendar     Calendar[]
+}
+
+model Reservation {
+  id              String             @id @default(uuid())
+  booker          Guest              @relation("BookerReservations", fields: [bookerId], references: [id])
+  bookerId        String
+  guest           Guest?             @relation("GuestReservations", fields: [guestId], references: [id])
+  guestId         String?            // jadi nullable dengan tanda tanya (opsional)
+  room            Room               @relation(fields: [roomId], references: [id])
+  roomId          String
+  checkIn         DateTime
+  checkOut        DateTime
+  guestTotal      Int
+  adultCount      Int
+  childCount      Int
+  totalPrice      Float
+  status          ReservationStatus  @default(PENDING)
+  createdAt       DateTime           @default(now())
+  additionalGuests AdditionalGuest[]
+  payment         Payment?
+  feedback        Feedback?
+  calendars       Calendar[]
+}
+
+
+
+enum PriceCategory {
+  FREE
+  HALF
+  FULL
+}
+
+model AdditionalGuest {
+  id            String         @id @default(uuid())
+  reservation   Reservation    @relation(fields: [reservationId], references: [id])
+  reservationId String
+  name          String
+  passport      String?
+  dateOfBirth   String?
+  gender        Gender?
+  priceCategory PriceCategory?
+}
+
+
+
+enum RoomStatus {
+  AVAILABLE
+  BOOKED
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  ACTIVE
+  CANCELED
+  CHECKED_OUT
+}
+
+model Calendar {
+  id            String       @id @default(uuid())
+  room          Room         @relation(fields: [roomId], references: [id])
+  roomId        String
+  date          DateTime
+  reservationId String? // opsional jika ingin buat relasi ke Reservation
+  reservation   Reservation? @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  reservation   Reservation   @relation(fields: [reservationId], references: [id])
+  reservationId String        @unique
+  method        PaymentMethod
+  status        PaymentStatus @default(UNPAID)
+  amount        Float
+  proofUrl      String?
+  paidAt        DateTime?
+  sender    String?
+}
+
+enum PaymentMethod {
+  TRANSFER
+  E_WALLET
+  CASH
+}
+
+enum PaymentStatus {
+  PAID
+  HALF_PAID
+  UNPAID
+  REFUNDED
+}
+
+model AuthenticationGuest {
+  id       String @id @default(uuid())
+  guest    Guest  @relation(fields: [guestId], references: [id])
+  guestId  String @unique
+  username String @unique
+  password String
+}
+
+
+model AuthenticationAdmin {
+  id       String @id @default(uuid())
+  admin    AdminTable @relation(fields: [adminId], references: [id])
+  adminId  String @unique
+  username String @unique
+  password String
+}
+
+
+model Feedback {
+  id            String      @id @default(uuid())
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  reservationId String      @unique
+  rating        Int
+  comment       String?
+  createdAt     DateTime    @default(now())
+}
+
+model Finance {
+  id        String   @id @default(uuid())
+  date      DateTime
+  income    Float    @default(0)
+  refund    Float    @default(0)
+  netIncome Float    @default(0)
+  note      String?
+}
