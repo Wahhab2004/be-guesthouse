@@ -13,8 +13,8 @@ RUN npm install
 # Salin seluruh file aplikasi ke dalam container
 COPY . .
 
-# Ekspos port yang digunakan oleh aplikasi (misalnya port 3000)
-EXPOSE 3000
+# Ekspos port yang digunakan oleh aplikasi (misalnya port 8080)
+EXPOSE 8080
 
 # Jalankan aplikasi
 CMD ["npm", "start"]
