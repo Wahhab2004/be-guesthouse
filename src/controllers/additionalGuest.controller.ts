@@ -7,9 +7,15 @@ export const createAdditionalGuest = async (req: Request, res: Response) => {
 	try {
 		const { reservationId, name, passport, dateOfBirth, gender } = req.body;
 
+		// Normalize gender to proper case
+		let normalizedGender = gender;
+		if (gender) {
+			normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+		}
+
 		// Gender enum validation (optional)
 		const allowedGenders = ["Male", "Female"];
-		if (gender && !allowedGenders.includes(gender)) {
+		if (gender && !allowedGenders.includes(normalizedGender)) {
 			return res.status(400).json({
 				status: "error",
 				message: `Invalid gender. Please use one of: ${allowedGenders.join(", ")}`,
@@ -51,7 +57,7 @@ export const createAdditionalGuest = async (req: Request, res: Response) => {
 				name,
 				passport,
 				dateOfBirth,
-				gender,
+				gender: normalizedGender,
 			},
 		});
 
@@ -105,6 +111,22 @@ export const updateAdditionalGuest = async (req: Request, res: Response) => {
 	const { id } = req.params;
 	const { name, passport, dateOfBirth, gender } = req.body;
 
+	// Normalize gender to proper case
+	let normalizedGender = gender;
+	if (gender) {
+		normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+	}
+
+	// Gender enum validation (optional)
+	const allowedGenders = ["Male", "Female"];
+	if (gender && !allowedGenders.includes(normalizedGender)) {
+		return res.status(400).json({
+			status: "error",
+			message: `Invalid gender. Please use one of: ${allowedGenders.join(", ")}`,
+			data: null,
+		});
+	}
+
 	try {
 		const guest = await prisma.additionalGuest.update({
 			where: { id },
@@ -112,7 +134,7 @@ export const updateAdditionalGuest = async (req: Request, res: Response) => {
 				name,
 				passport,
 				dateOfBirth,
-				gender,
+				gender: normalizedGender,
 			},
 		});
 

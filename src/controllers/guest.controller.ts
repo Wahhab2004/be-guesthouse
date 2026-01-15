@@ -23,6 +23,12 @@ export const createGuest = async (req: Request, res: Response) => {
 		country,
 	} = req.body;
 
+	// Normalize gender to proper case
+	let normalizedGender = gender;
+	if (gender) {
+		normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+	}
+
 	// 🔹 Detect login from token
 	let isLoggedIn = false;
 	let isAdmin = false;
@@ -101,7 +107,7 @@ export const createGuest = async (req: Request, res: Response) => {
 	}
 
 	const validGenders = ["Male", "Female"];
-	if (!gender || !validGenders.includes(gender)) {
+	if (!gender || !validGenders.includes(normalizedGender)) {
 		return res.status(400).json({
 			code: 400,
 			message: "Gender must be 'Male' or 'Female'.",
@@ -182,7 +188,7 @@ export const createGuest = async (req: Request, res: Response) => {
 				password: hashedPassword,
 				passport,
 				dateOfBirth,
-				gender,
+				gender: normalizedGender,
 				country,
 			},
 		});
@@ -217,6 +223,12 @@ export const updateGuest = async (req: Request, res: Response) => {
 		dateOfBirth,
 		country,
 	} = req.body;
+
+	// Normalize gender to proper case
+	let normalizedGender = gender;
+	if (gender) {
+		normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+	}
 
 	try {
 		const guest = await prisma.guest.findUnique({ where: { id } });
@@ -268,7 +280,7 @@ export const updateGuest = async (req: Request, res: Response) => {
 			hashedPassword = await bcrypt.hash(password, 10);
 		}
 
-		if (gender && !["Male", "Female"].includes(gender)) {
+		if (gender && !["Male", "Female"].includes(normalizedGender)) {
 			return res.status(400).json({
 				code: 400,
 				message: "Gender must be 'Male' or 'Female'.",
@@ -286,10 +298,12 @@ export const updateGuest = async (req: Request, res: Response) => {
 				...(passport && { passport }),
 				...(dateOfBirth && { dateOfBirth }),
 				...(country && { country }),
-				...(gender && { gender: gender as any }),
+				...(gender && { gender: normalizedGender as any }),
 				...(hashedPassword && { password: hashedPassword }),
 			},
 		});
+
+		console.log("Updated guest gender to:", normalizedGender);
 
 		return res.status(200).json({
 			code: 200,
