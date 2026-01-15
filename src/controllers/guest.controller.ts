@@ -9,12 +9,12 @@ interface AuthRequest extends Request {
 		type: "admin" | "guest";
 	};
 }
-
-export const createGuest = async (req: AuthRequest, res: Response) => {
+// POST /api/guests - Create a new guest
+export const createGuest = async (req: Request, res: Response) => {
 	const {
 		name,
 		email,
-		username,
+		username, // username bisa opsional
 		phone,
 		password,
 		passport,
@@ -25,6 +25,10 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 
 	// 🔹 Detect login from token
 	let isLoggedIn = false;
+	let isAdmin = false;
+	let guestId = null;
+
+	// Validasi login dengan token
 	try {
 		const authHeader = req.headers["authorization"];
 		const token = authHeader && authHeader.split(" ")[1];
@@ -32,10 +36,16 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 			try {
 				jwt.verify(token, process.env.ADMIN_SECRET as string);
 				isLoggedIn = true;
+				isAdmin = true; // Jika token admin, set isAdmin true
 			} catch {
+				// Jika bukan admin, cek token guest
 				try {
-					jwt.verify(token, process.env.GUEST_SECRET as string);
+					const decoded = jwt.verify(
+						token,
+						process.env.GUEST_SECRET as string
+					) as any;
 					isLoggedIn = true;
+					guestId = decoded.id; // Menyimpan id guest
 				} catch {
 					isLoggedIn = false;
 				}
@@ -45,7 +55,7 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 		isLoggedIn = false;
 	}
 
-	// === General validation ===
+	// === Validasi Umum ===
 	if (!name || typeof name !== "string" || name.trim().length < 3) {
 		return res.status(400).json({
 			code: 400,
@@ -54,18 +64,19 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 		});
 	}
 
-	if (!email || typeof email !== "string" || !email.includes("@")) {
+	// Jika username tidak ada, maka generate username dari name
+	let generatedUsername = username
+		? username
+		: name.trim().toLowerCase().replace(/\s+/g, "");
+
+	// Validasi email hanya jika bukan admin
+	if (
+		!isAdmin &&
+		(!email || typeof email !== "string" || !email.includes("@"))
+	) {
 		return res.status(400).json({
 			code: 400,
 			message: "Invalid email format.",
-			status: "failed",
-		});
-	}
-
-	if (!username || typeof username !== "string" || username.trim().length < 3) {
-		return res.status(400).json({
-			code: 400,
-			message: "Username is required and must be at least 3 characters long.",
 			status: "failed",
 		});
 	}
@@ -78,8 +89,8 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 		});
 	}
 
-	// === Password validation only if not logged in ===
-	if (!isLoggedIn) {
+	// === Password validation only if not logged in and not admin ===
+	if (!isLoggedIn && !isAdmin) {
 		if (!password || typeof password !== "string" || password.length < 6) {
 			return res.status(400).json({
 				code: 400,
@@ -130,10 +141,10 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 		});
 	}
 
+	// Check if email or username already exists
 	try {
-		// Check if email or username already exists
 		const existingGuest = await prisma.guest.findFirst({
-			where: { OR: [{ email }, { username }] },
+			where: { OR: [{ email }, { username: generatedUsername }] },
 		});
 
 		if (existingGuest) {
@@ -145,16 +156,28 @@ export const createGuest = async (req: AuthRequest, res: Response) => {
 				status: "failed",
 			});
 		}
+	} catch (error) {
+		console.error("Error checking existing guest:", error);
+		return res.status(500).json({
+			code: 500,
+			message: "Error checking existing guest.",
+			status: "failed",
+		});
+	}
 
-		// Hash password if not logged in, else set to null
-		const hashedPassword =
-			!isLoggedIn && password ? await bcrypt.hash(password, 10) : null;
+	// Hash password if not logged in and not admin, else set to null
+	const hashedPassword =
+		!isLoggedIn && !isAdmin && password
+			? await bcrypt.hash(password, 10)
+			: null;
 
+	// Create guest record
+	try {
 		const guest = await prisma.guest.create({
 			data: {
 				name,
-				email,
-				username,
+				email: isAdmin ? null : email, // Email is null for admin
+				username: generatedUsername, // Gunakan username yang digenerate
 				phone,
 				password: hashedPassword,
 				passport,
