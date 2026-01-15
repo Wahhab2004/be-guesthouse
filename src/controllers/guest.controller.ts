@@ -241,6 +241,15 @@ export const updateGuest = async (req: Request, res: Response) => {
 			}
 		}
 
+		const validGenders = ["Male", "Female"];
+		if (!gender || !validGenders.includes(gender)) {
+			return res.status(400).json({
+				code: 400,
+				message: "Gender must be 'Male' or 'Female'.",
+				status: "failed",
+			});
+		}
+
 		// Check if new username is already used
 		if (username && username !== guest.username) {
 			const existingUsername = await prisma.guest.findUnique({
@@ -271,15 +280,15 @@ export const updateGuest = async (req: Request, res: Response) => {
 		const updatedGuest = await prisma.guest.update({
 			where: { id },
 			data: {
-				name,
-				email,
-				phone,
-				gender,
-				username,
-				password: hashedPassword,
-				passport,
-				dateOfBirth,
-				country,
+				...(name && { name }),
+				...(email && { email }),
+				...(phone && { phone }),
+				...(username && { username }),
+				...(passport && { passport }),
+				...(dateOfBirth && { dateOfBirth }),
+				...(country && { country }),
+				...(gender && { gender }),
+				...(hashedPassword && { password: hashedPassword }),
 			},
 		});
 
