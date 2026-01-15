@@ -1,8 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
-
-
-const prisma = new PrismaClient();
+import prisma from "../prisma/client";
 
 
 export const getAllRooms = async (_req: Request, res: Response) => {

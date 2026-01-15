@@ -1,9 +1,7 @@
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Request, Response } from "express";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma/client";
 
 // Helper: Generate JWT
 const generateToken = (payload: object, type: "admin" | "guest") => {
