@@ -8,14 +8,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteRoom = exports.updateRoom = exports.createRoom = exports.getRoomById = exports.getAvailableRooms = exports.getAllRooms = void 0;
-const client_1 = require("@prisma/client");
-const prisma = new client_1.PrismaClient();
+const client_1 = __importDefault(require("../prisma/client"));
 const getAllRooms = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const today = new Date();
-        const rooms = yield prisma.room.findMany({
+        const rooms = yield client_1.default.room.findMany({
             include: {
                 reservations: true,
             },
@@ -85,7 +87,7 @@ const getAvailableRooms = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 },
             };
         }
-        const rooms = yield prisma.room.findMany({
+        const rooms = yield client_1.default.room.findMany({
             where: roomFilters,
             include: {
                 reservations: true,
@@ -127,7 +129,7 @@ exports.getAvailableRooms = getAvailableRooms;
 const getRoomById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     try {
-        const room = yield prisma.room.findUnique({ where: { id } });
+        const room = yield client_1.default.room.findUnique({ where: { id } });
         if (!room) {
             return res.status(404).json({
                 code: 404,
@@ -156,7 +158,7 @@ exports.getRoomById = getRoomById;
 const createRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { name, description, price, status, photoUrl } = req.body;
     try {
-        const newRoom = yield prisma.room.create({
+        const newRoom = yield client_1.default.room.create({
             data: { name, description, price: parseFloat(price), status, photoUrl },
         });
         return res.status(201).json({
@@ -180,7 +182,7 @@ const updateRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     const { id } = req.params;
     const { name, description, price, status, photoUrl } = req.body;
     try {
-        const updatedRoom = yield prisma.room.update({
+        const updatedRoom = yield client_1.default.room.update({
             where: { id },
             data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (name && { name })), (description && { description })), (price !== undefined && { price: parseFloat(price) })), (status && { status })), (photoUrl && { photoUrl })),
         });
@@ -204,7 +206,7 @@ exports.updateRoom = updateRoom;
 const deleteRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     try {
-        yield prisma.room.delete({ where: { id } });
+        yield client_1.default.room.delete({ where: { id } });
         return res.status(200).json({
             code: 200,
             data: null,

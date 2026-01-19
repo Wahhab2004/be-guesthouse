@@ -181,8 +181,24 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 status: "failed",
             });
         }
-        // Hitung total harga
-        const totalPriceAdults = adultCount * room.price * days;
+        // Harga dewasa tanpa diskon
+        const totalPriceAdultsRaw = adultCount * room.price * days;
+        let totalAdultDiscount = 0;
+        // Rule 1: 3–4 hari → ¥500 per hari per dewasa
+        if (days >= 3 && days <= 4) {
+            totalAdultDiscount = 500 * days * adultCount;
+        }
+        // Rule 2: >= 5 hari → ¥1000 per hari per dewasa
+        if (days >= 5) {
+            totalAdultDiscount = 1000 * days * adultCount;
+        }
+        // Rule 3: 1 hari + 6 dewasa → ¥1000 per dewasa (flat)
+        if (days === 1 && adultCount === 6) {
+            totalAdultDiscount = 1000 * adultCount;
+        }
+        // Harga dewasa setelah diskon (tidak boleh minus)
+        const totalPriceAdults = Math.max(totalPriceAdultsRaw - totalAdultDiscount, 0);
+        // ================= CHILD PRICING =================
         const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
             if (ag.priceCategory === "FULL")
                 return sum + room.price * days;
@@ -190,6 +206,7 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 return sum + room.price * 0.5 * days;
             return sum; // FREE = 0
         }, 0);
+        // ================= GRAND TOTAL =================
         const totalPrice = totalPriceAdults + totalPriceChildren;
         let bookerId;
         if (token) {
@@ -204,32 +221,23 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         }
         // Buat reservasi dan pembayaran, sekaligus buat additionalGuests
         const reservation = yield client_1.default.reservation.create({
-            data: {
-                guestId,
-                checkIn: checkInDate,
-                checkOut: checkOutDate,
-                totalPrice,
-                guestTotal: totalGuest,
-                adultCount,
-                childCount,
-                additionalGuests: {
+            data: Object.assign(Object.assign(Object.assign(Object.assign({}, (guestId && { guest: { connect: { id: guestId } } })), { checkIn: checkInDate, checkOut: checkOutDate, totalPrice, guestTotal: totalGuest, adultCount,
+                childCount, additionalGuests: {
                     create: processedAdditionalGuests,
-                },
-                payment: {
+                }, payment: {
                     create: {
                         method: "E_WALLET",
                         status: "UNPAID",
                         amount: totalPrice,
                     },
-                },
-                booker: {
-                    connect: { id: bookerId }, // pastikan bookerId ada
-                },
-                room: {
+                } }), (isAdmin
+                ? { bookerAdmin: { connect: { id: bookerId } } }
+                : { booker: { connect: { id: bookerId } } })), { room: {
                     connect: { id: roomId },
-                },
-            },
+                } }),
             include: {
+                booker: true,
+                bookerAdmin: true,
                 guest: true,
                 room: true,
                 payment: true,
@@ -382,7 +390,7 @@ const getReservationById = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.getReservationById = getReservationById;
 // PUT /api/reservations/:id - Update reservation by ID
 const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     const { id } = req.params;
     const { roomId, guestId, checkIn, checkOut, guestTotal, status, paymentStatus, paymentMethod, paymentSender, } = req.body;
     const proofFile = req.file;
@@ -401,12 +409,12 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
             decoded = jsonwebtoken_1.default.verify(token, process.env.ADMIN_SECRET);
             role = "admin";
         }
-        catch (_f) {
+        catch (_g) {
             decoded = jsonwebtoken_1.default.verify(token, process.env.GUEST_SECRET);
             role = "guest";
         }
     }
-    catch (_g) {
+    catch (_h) {
         return res.status(403).json({
             code: 403,
             message: "Invalid token.",
@@ -416,7 +424,10 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
     try {
         const existing = yield client_1.default.reservation.findUnique({
             where: { id },
-            include: { payment: true },
+            include: {
+                payment: true,
+                additionalGuests: true,
+            },
         });
         if (!existing) {
             return res.status(404).json({
@@ -471,32 +482,54 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         const room = yield client_1.default.room.findUnique({
             where: { id: roomId || existing.roomId },
         });
-        const totalPrice = days * ((room === null || room === void 0 ? void 0 : room.price) || 0) * newGuestTotal;
-        let proofUrl = (_b = existing.payment) === null || _b === void 0 ? void 0 : _b.proofUrl;
+        // Harga dewasa tanpa diskon
+        const totalPriceAdultsRaw = existing.adultCount * ((room === null || room === void 0 ? void 0 : room.price) || 0) * days;
+        // Siapkan additionalGuests untuk pricing anak
+        const processedAdditionalGuests = ((_b = existing.additionalGuests) === null || _b === void 0 ? void 0 : _b.map((ag) => ({
+            priceCategory: ag.priceCategory,
+        }))) || [];
+        // ================= ADULT DISCOUNT =================
+        let totalAdultDiscount = 0;
+        // Rule 1: 3–4 hari → ¥500 per hari per dewasa
+        if (days >= 3 && days <= 4) {
+            totalAdultDiscount = 500 * days * existing.adultCount;
+        }
+        // Rule 2: >= 5 hari → ¥1000 per hari per dewasa
+        if (days >= 5) {
+            totalAdultDiscount = 1000 * days * existing.adultCount;
+        }
+        // Rule 3: 1 hari + 6 dewasa → ¥1000 per dewasa (flat)
+        if (days === 1 && existing.adultCount === 6) {
+            totalAdultDiscount = 1000 * existing.adultCount;
+        }
+        // Harga dewasa setelah diskon
+        const totalPriceAdults = Math.max(totalPriceAdultsRaw - totalAdultDiscount, 0);
+        // ================= CHILD PRICING =================
+        const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
+            if (ag.priceCategory === "FULL")
+                return sum + ((room === null || room === void 0 ? void 0 : room.price) || 0) * days;
+            if (ag.priceCategory === "HALF")
+                return sum + ((room === null || room === void 0 ? void 0 : room.price) || 0) * 0.5 * days;
+            return sum; // FREE
+        }, 0);
+        // ================= GRAND TOTAL =================
+        const totalPrice = totalPriceAdults + totalPriceChildren;
+        let proofUrl = (_c = existing.payment) === null || _c === void 0 ? void 0 : _c.proofUrl;
         if (proofFile) {
             proofUrl = `/uploads/${proofFile.filename}`;
         }
         const updated = yield client_1.default.reservation.update({
             where: { id },
-            data: {
-                roomId: roomId || existing.roomId,
-                guestId: guestId || existing.guestId,
-                checkIn: newCheckIn,
-                checkOut: newCheckOut,
-                guestTotal: newGuestTotal,
-                totalPrice,
-                status: status || existing.status,
-                payment: {
+            data: Object.assign(Object.assign(Object.assign({}, (roomId && { room: { connect: { id: roomId } } })), (guestId && { guest: { connect: { id: guestId } } })), { checkIn: newCheckIn, checkOut: newCheckOut, guestTotal: newGuestTotal, totalPrice, status: status || existing.status, payment: {
                     update: {
-                        status: paymentStatus || ((_c = existing.payment) === null || _c === void 0 ? void 0 : _c.status),
-                        method: paymentMethod || ((_d = existing.payment) === null || _d === void 0 ? void 0 : _d.method),
+                        status: paymentStatus || ((_d = existing.payment) === null || _d === void 0 ? void 0 : _d.status),
+                        method: paymentMethod || ((_e = existing.payment) === null || _e === void 0 ? void 0 : _e.method),
                         sender: paymentSender !== undefined
                             ? paymentSender
-                            : (_e = existing.payment) === null || _e === void 0 ? void 0 : _e.sender,
+                            : (_f = existing.payment) === null || _f === void 0 ? void 0 : _f.sender,
                         proofUrl,
                     },
-                },
-            },
+                } }),
             include: { payment: true },
         });
         return res.status(200).json({

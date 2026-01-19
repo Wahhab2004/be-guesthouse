@@ -8,16 +8,23 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAllGuestsInReservation = exports.updateAdditionalGuest = exports.deleteAdditionalGuest = exports.getGuestsByReservation = exports.createAdditionalGuest = void 0;
-const client_1 = require("@prisma/client");
-const prisma = new client_1.PrismaClient();
+const client_1 = __importDefault(require("../prisma/client"));
 const createAdditionalGuest = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { reservationId, name, passport, dateOfBirth, gender } = req.body;
+        // Normalize gender to proper case
+        let normalizedGender = gender;
+        if (gender) {
+            normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+        }
         // Gender enum validation (optional)
         const allowedGenders = ["Male", "Female"];
-        if (gender && !allowedGenders.includes(gender)) {
+        if (gender && !allowedGenders.includes(normalizedGender)) {
             return res.status(400).json({
                 status: "error",
                 message: `Invalid gender. Please use one of: ${allowedGenders.join(", ")}`,
@@ -25,7 +32,7 @@ const createAdditionalGuest = (req, res) => __awaiter(void 0, void 0, void 0, fu
             });
         }
         // Check if reservation exists
-        const reservation = yield prisma.reservation.findUnique({
+        const reservation = yield client_1.default.reservation.findUnique({
             where: { id: reservationId },
         });
         if (!reservation) {
@@ -36,7 +43,7 @@ const createAdditionalGuest = (req, res) => __awaiter(void 0, void 0, void 0, fu
             });
         }
         // Count existing additional guests
-        const totalGuests = yield prisma.additionalGuest.count({
+        const totalGuests = yield client_1.default.additionalGuest.count({
             where: { reservationId },
         });
         const maxAdditionalGuests = reservation.guestTotal - 1;
@@ -48,13 +55,13 @@ const createAdditionalGuest = (req, res) => __awaiter(void 0, void 0, void 0, fu
             });
         }
         // Save additional guest
-        const guest = yield prisma.additionalGuest.create({
+        const guest = yield client_1.default.additionalGuest.create({
             data: {
                 reservationId,
                 name,
                 passport,
                 dateOfBirth,
-                gender,
+                gender: normalizedGender,
             },
         });
         return res.status(201).json({
@@ -76,7 +83,7 @@ exports.createAdditionalGuest = createAdditionalGuest;
 const getGuestsByReservation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { reservationId } = req.params;
     try {
-        const guests = yield prisma.additionalGuest.findMany({
+        const guests = yield client_1.default.additionalGuest.findMany({
             where: { reservationId },
         });
         res.json(guests);
@@ -90,7 +97,7 @@ exports.getGuestsByReservation = getGuestsByReservation;
 const deleteAdditionalGuest = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     try {
-        yield prisma.additionalGuest.delete({
+        yield client_1.default.additionalGuest.delete({
             where: { id },
         });
         res.json({ message: "Guest deleted successfully" });
@@ -104,14 +111,28 @@ exports.deleteAdditionalGuest = deleteAdditionalGuest;
 const updateAdditionalGuest = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const { name, passport, dateOfBirth, gender } = req.body;
+    // Normalize gender to proper case
+    let normalizedGender = gender;
+    if (gender) {
+        normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+    }
+    // Gender enum validation (optional)
+    const allowedGenders = ["Male", "Female"];
+    if (gender && !allowedGenders.includes(normalizedGender)) {
+        return res.status(400).json({
+            status: "error",
+            message: `Invalid gender. Please use one of: ${allowedGenders.join(", ")}`,
+            data: null,
+        });
+    }
     try {
-        const guest = yield prisma.additionalGuest.update({
+        const guest = yield client_1.default.additionalGuest.update({
             where: { id },
             data: {
                 name,
                 passport,
                 dateOfBirth,
-                gender,
+                gender: normalizedGender,
             },
         });
         res.json({ message: "Guest updated successfully", data: guest });
@@ -126,7 +147,7 @@ const getAllGuestsInReservation = (req, res) => __awaiter(void 0, void 0, void 0
     var _a, _b, _c, _d;
     const { reservationId } = req.params;
     try {
-        const reservation = yield prisma.reservation.findUnique({
+        const reservation = yield client_1.default.reservation.findUnique({
             where: { id: reservationId },
             include: {
                 guest: true, // main guest

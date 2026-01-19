@@ -8,10 +8,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deletePayment = exports.updatePayment = exports.getAllPayments = exports.createPayment = void 0;
-const client_1 = require("@prisma/client");
-const prisma = new client_1.PrismaClient();
+const client_1 = __importDefault(require("../prisma/client"));
 const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { reservationId, method, amount, proofUrl } = req.body;
     if (!reservationId || !method || !amount) {
@@ -23,7 +25,7 @@ const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
     try {
         // Cek apakah reservasi ada
-        const reservation = yield prisma.reservation.findUnique({
+        const reservation = yield client_1.default.reservation.findUnique({
             where: { id: reservationId },
         });
         if (!reservation) {
@@ -34,7 +36,7 @@ const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             });
         }
         // Cek apakah payment sudah ada
-        const existingPayment = yield prisma.payment.findUnique({
+        const existingPayment = yield client_1.default.payment.findUnique({
             where: { reservationId },
         });
         if (existingPayment) {
@@ -44,7 +46,7 @@ const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
                 status: "gagal",
             });
         }
-        const payment = yield prisma.payment.create({
+        const payment = yield client_1.default.payment.create({
             data: {
                 reservationId,
                 method,
@@ -72,7 +74,7 @@ const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
 exports.createPayment = createPayment;
 const getAllPayments = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const payments = yield prisma.payment.findMany({
+        const payments = yield client_1.default.payment.findMany({
             select: {
                 id: true,
                 reservationId: true,
@@ -112,7 +114,7 @@ const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
     try {
         // Retrieve existing payment data
-        const existingPayment = yield prisma.payment.findUnique({
+        const existingPayment = yield client_1.default.payment.findUnique({
             where: { id },
         });
         if (!existingPayment) {
@@ -137,7 +139,7 @@ const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
                 status: "failed",
             });
         }
-        const updated = yield prisma.payment.update({
+        const updated = yield client_1.default.payment.update({
             where: { id },
             data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (status && { status })), (method && { method })), (proofUrl && { proofUrl })), (paymentSender && { sender: paymentSender })), { paidAt: paidAt ? new Date(paidAt) : new Date() }),
         });
@@ -161,7 +163,7 @@ exports.updatePayment = updatePayment;
 const deletePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     try {
-        const payment = yield prisma.payment.delete({
+        const payment = yield client_1.default.payment.delete({
             where: { id },
         });
         return res.status(200).json({

@@ -13,10 +13,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loginAdmin = exports.loginGuest = void 0;
-const client_1 = require("@prisma/client");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const prisma = new client_1.PrismaClient();
+const client_1 = __importDefault(require("../prisma/client"));
 // Helper: Generate JWT
 const generateToken = (payload, type) => {
     const secret = type === "admin" ? process.env.ADMIN_SECRET : process.env.GUEST_SECRET;
@@ -31,7 +30,7 @@ const loginGuest = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             .json({ message: "Username dan password wajib diisi." });
     }
     try {
-        const guest = yield prisma.guest.findUnique({ where: { username } });
+        const guest = yield client_1.default.guest.findUnique({ where: { username } });
         if (!guest) {
             return res.status(404).json({ message: "Akun guest tidak ditemukan." });
         }
@@ -67,7 +66,7 @@ const loginAdmin = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             .json({ message: "Username dan password wajib diisi." });
     }
     try {
-        const admin = yield prisma.adminTable.findUnique({ where: { username } });
+        const admin = yield client_1.default.adminTable.findUnique({ where: { username } });
         if (!admin) {
             return res.status(404).json({ message: "Akun admin tidak ditemukan." });
         }
