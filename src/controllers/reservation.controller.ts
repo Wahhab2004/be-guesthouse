@@ -228,7 +228,7 @@ export const createReservation = async (req: Request, res: Response) => {
 		// Buat reservasi dan pembayaran, sekaligus buat additionalGuests
 		const reservation = await prisma.reservation.create({
 			data: {
-				guestId,
+				...(guestId && { guest: { connect: { id: guestId } } }),
 				checkIn: checkInDate,
 				checkOut: checkOutDate,
 				totalPrice,
@@ -245,14 +245,17 @@ export const createReservation = async (req: Request, res: Response) => {
 						amount: totalPrice,
 					},
 				},
-				booker: {
-					connect: { id: bookerId! }, // pastikan bookerId ada
-				},
+				...(isAdmin
+					? { bookerAdmin: { connect: { id: bookerId! } } }
+					: { booker: { connect: { id: bookerId! } } }
+				),
 				room: {
 					connect: { id: roomId },
 				},
 			},
 			include: {
+				booker: true,
+				bookerAdmin: true,
 				guest: true,
 				room: true,
 				payment: true,

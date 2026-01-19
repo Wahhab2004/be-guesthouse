@@ -37,12 +37,12 @@ async function main() {
   // 4. Buat Reservation
   const reservation = await prisma.reservation.create({
     data: {
-      guestId: guest.id,
-      roomId: room.id,
+      guest: { connect: { id: guest.id } },
+      room: { connect: { id: room.id } },
+      booker: { connect: { id: guest.id } },
       checkIn: new Date("2025-08-15"),
       checkOut: new Date("2025-08-17"),
       guestTotal: 2,
-      bookerId: guest.id, // Menggunakan ID Guest sebagai Booker
       adultCount: 1,
       childCount: 1,
       totalPrice: 1000000,

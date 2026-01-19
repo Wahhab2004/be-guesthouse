@@ -43,6 +43,7 @@ model AdminTable {
   email     String   @unique
   password  String
   AuthenticationAdmin AuthenticationAdmin?
+  reservations Reservation[] @relation("AdminReservations")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -61,8 +62,10 @@ model Room {
 
 model Reservation {
   id              String             @id @default(uuid())
-  booker          Guest              @relation("BookerReservations", fields: [bookerId], references: [id])
-  bookerId        String
+  booker          Guest?             @relation("BookerReservations", fields: [bookerId], references: [id])
+  bookerId        String?
+  bookerAdmin     AdminTable?        @relation("AdminReservations", fields: [bookerAdminId], references: [id])
+  bookerAdminId   String?
   guest           Guest?             @relation("GuestReservations", fields: [guestId], references: [id])
   guestId         String?            // jadi nullable dengan tanda tanya (opsional)
   room            Room               @relation(fields: [roomId], references: [id])
