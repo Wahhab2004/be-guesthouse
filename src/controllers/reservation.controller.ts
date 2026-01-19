@@ -197,8 +197,33 @@ export const createReservation = async (req: Request, res: Response) => {
 			});
 		}
 
-		// Hitung total harga
-		const totalPriceAdults = adultCount * room.price * days;
+		// Harga dewasa tanpa diskon
+		const totalPriceAdultsRaw = adultCount * room.price * days;
+
+		let totalAdultDiscount = 0;
+
+		// Rule 1: 3–4 hari → ¥500 per hari per dewasa
+		if (days >= 3 && days <= 4) {
+			totalAdultDiscount = 500 * days * adultCount;
+		}
+
+		// Rule 2: >= 5 hari → ¥1000 per hari per dewasa
+		if (days >= 5) {
+			totalAdultDiscount = 1000 * days * adultCount;
+		}
+
+		// Rule 3: 1 hari + 6 dewasa → ¥1000 per dewasa (flat)
+		if (days === 1 && adultCount === 6) {
+			totalAdultDiscount = 1000 * adultCount;
+		}
+
+		// Harga dewasa setelah diskon (tidak boleh minus)
+		const totalPriceAdults = Math.max(
+			totalPriceAdultsRaw - totalAdultDiscount,
+			0,
+		);
+
+		// ================= CHILD PRICING =================
 		const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
 			if (ag.priceCategory === "FULL") return sum + room.price * days;
 			else if (ag.priceCategory === "HALF")
@@ -206,6 +231,7 @@ export const createReservation = async (req: Request, res: Response) => {
 			return sum; // FREE = 0
 		}, 0);
 
+		// ================= GRAND TOTAL =================
 		const totalPrice = totalPriceAdults + totalPriceChildren;
 
 		let bookerId: string;
@@ -213,13 +239,13 @@ export const createReservation = async (req: Request, res: Response) => {
 			try {
 				const decodedAdmin = jwt.verify(
 					token,
-					process.env.ADMIN_SECRET!
+					process.env.ADMIN_SECRET!,
 				) as any;
 				bookerId = decodedAdmin.id;
 			} catch {
 				const decodedGuest = jwt.verify(
 					token,
-					process.env.GUEST_SECRET!
+					process.env.GUEST_SECRET!,
 				) as any;
 				bookerId = decodedGuest.id;
 			}
@@ -247,8 +273,7 @@ export const createReservation = async (req: Request, res: Response) => {
 				},
 				...(isAdmin
 					? { bookerAdmin: { connect: { id: bookerId! } } }
-					: { booker: { connect: { id: bookerId! } } }
-				),
+					: { booker: { connect: { id: bookerId! } } }),
 				room: {
 					connect: { id: roomId },
 				},
@@ -327,7 +352,8 @@ export const getAllReservations = async (req: Request, res: Response) => {
 
 		if (checkInStart || checkInEnd) {
 			whereClause.checkIn = {};
-			if (checkInStart) whereClause.checkIn.gte = new Date(checkInStart as string);
+			if (checkInStart)
+				whereClause.checkIn.gte = new Date(checkInStart as string);
 			if (checkInEnd) whereClause.checkIn.lte = new Date(checkInEnd as string);
 		}
 
@@ -388,7 +414,6 @@ export const getAllReservations = async (req: Request, res: Response) => {
 		});
 	}
 };
-
 
 // GET /api/reservations/:id - Get reservation by ID
 export const getReservationById = async (req: Request, res: Response) => {
@@ -478,7 +503,10 @@ export const updateReservation = async (req: Request, res: Response) => {
 	try {
 		const existing = await prisma.reservation.findUnique({
 			where: { id },
-			include: { payment: true },
+			include: {
+				payment: true,
+				additionalGuests: true,
+			},
 		});
 
 		if (!existing) {
@@ -541,7 +569,49 @@ export const updateReservation = async (req: Request, res: Response) => {
 			where: { id: roomId || existing.roomId },
 		});
 
-		const totalPrice = days * (room?.price || 0) * newGuestTotal;
+		// Harga dewasa tanpa diskon
+		const totalPriceAdultsRaw = existing.adultCount * (room?.price || 0) * days;
+
+		// Siapkan additionalGuests untuk pricing anak
+		const processedAdditionalGuests =
+			existing.additionalGuests?.map((ag) => ({
+				priceCategory: ag.priceCategory!,
+			})) || [];
+
+		// ================= ADULT DISCOUNT =================
+		let totalAdultDiscount = 0;
+
+		// Rule 1: 3–4 hari → ¥500 per hari per dewasa
+		if (days >= 3 && days <= 4) {
+			totalAdultDiscount = 500 * days * existing.adultCount;
+		}
+
+		// Rule 2: >= 5 hari → ¥1000 per hari per dewasa
+		if (days >= 5) {
+			totalAdultDiscount = 1000 * days * existing.adultCount;
+		}
+
+		// Rule 3: 1 hari + 6 dewasa → ¥1000 per dewasa (flat)
+		if (days === 1 && existing.adultCount === 6) {
+			totalAdultDiscount = 1000 * existing.adultCount;
+		}
+
+		// Harga dewasa setelah diskon
+		const totalPriceAdults = Math.max(
+			totalPriceAdultsRaw - totalAdultDiscount,
+			0,
+		);
+
+		// ================= CHILD PRICING =================
+		const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
+			if (ag.priceCategory === "FULL") return sum + (room?.price || 0) * days;
+			if (ag.priceCategory === "HALF")
+				return sum + (room?.price || 0) * 0.5 * days;
+			return sum; // FREE
+		}, 0);
+
+		// ================= GRAND TOTAL =================
+		const totalPrice = totalPriceAdults + totalPriceChildren;
 
 		let proofUrl: string | null | undefined = existing.payment?.proofUrl;
 		if (proofFile) {
