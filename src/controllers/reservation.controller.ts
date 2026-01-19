@@ -621,8 +621,8 @@ export const updateReservation = async (req: Request, res: Response) => {
 		const updated = await prisma.reservation.update({
 			where: { id },
 			data: {
-				roomId: roomId || existing.roomId,
-				guestId: guestId || existing.guestId,
+				...(roomId && { room: { connect: { id: roomId } } }),
+				...(guestId && { guest: { connect: { id: guestId } } }),
 				checkIn: newCheckIn,
 				checkOut: newCheckOut,
 				guestTotal: newGuestTotal,
