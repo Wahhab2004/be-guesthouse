@@ -327,19 +327,20 @@ export const getAllReservations = async (req: Request, res: Response) => {
 			checkInEnd,
 			guestName,
 			roomName,
-			bookerId, // ✅ tambah ini
+			bookerId,
 			sortBy,
 			sortOrder,
 		} = req.query;
 
 		const whereClause: any = {};
 
+		// ================= FILTERS =================
 		if (status) {
 			whereClause.status = status;
 		}
 
 		if (paymentStatus) {
-			whereClause.Payment = {
+			whereClause.payment = {
 				status: paymentStatus,
 			};
 		}
@@ -375,11 +376,11 @@ export const getAllReservations = async (req: Request, res: Response) => {
 			};
 		}
 
-		// ✅ Filter berdasarkan bookerId
 		if (bookerId) {
 			whereClause.bookerId = bookerId;
 		}
 
+		// ================= SORTING =================
 		let orderBy: any = { createdAt: "desc" };
 
 		if (sortBy && (sortBy === "createdAt" || sortBy === "checkIn")) {
@@ -388,6 +389,7 @@ export const getAllReservations = async (req: Request, res: Response) => {
 			};
 		}
 
+		// ================= DATA =================
 		const reservations = await prisma.reservation.findMany({
 			where: whereClause,
 			orderBy,
@@ -399,9 +401,59 @@ export const getAllReservations = async (req: Request, res: Response) => {
 			},
 		});
 
+		// ================= SUMMARY =================
+		const totalAll = await prisma.reservation.count();
+
+		const totalFiltered = await prisma.reservation.count({
+			where: whereClause,
+		});
+
+		// ================= PAID BUT NOT ACTIVE =================
+		const paidButNotActive = await prisma.reservation.count({
+			where: {
+				...whereClause,
+				status: "CONFIRMED",
+				payment: {
+					status: "PAID",
+				},
+			},
+		});
+
+		const statusGroup = await prisma.reservation.groupBy({
+			by: ["status"],
+			_count: {
+				_all: true,
+			},
+		});
+
+		const paymentGroup = await prisma.payment.groupBy({
+			by: ["status"],
+			_count: {
+				_all: true,
+			},
+		});
+
+		const byStatus = statusGroup.reduce((acc: any, item) => {
+			acc[item.status] = item._count._all;
+			return acc;
+		}, {});
+
+		const byPayment = paymentGroup.reduce((acc: any, item) => {
+			acc[item.status] = item._count._all;
+			return acc;
+		}, {});
+
+		// ================= RESPONSE =================
 		return res.status(200).json({
 			code: 200,
 			data: reservations,
+			summary: {
+				totalAll,
+				totalFiltered,
+				byStatus,
+				byPayment,
+				paidButNotActive
+			},
 			message: "Daftar reservasi berhasil diambil",
 			status: "sukses",
 		});

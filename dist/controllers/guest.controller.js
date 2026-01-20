@@ -83,8 +83,8 @@ const createGuest = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             status: "failed",
         });
     }
-    // === Password validation only if not logged in and not admin ===
-    if (!isLoggedIn && !isAdmin) {
+    // === Password validation only if not logged in ===
+    if (!isLoggedIn) {
         if (!password || typeof password !== "string" || password.length < 6) {
             return res.status(400).json({
                 code: 400,

@@ -273,14 +273,14 @@ exports.createReservation = createReservation;
 // GET /api/reservations - Get all reservations with filters
 const getAllReservations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { status, paymentStatus, startDate, endDate, checkInStart, checkInEnd, guestName, roomName, bookerId, // ✅ tambah ini
-        sortBy, sortOrder, } = req.query;
+        const { status, paymentStatus, startDate, endDate, checkInStart, checkInEnd, guestName, roomName, bookerId, sortBy, sortOrder, } = req.query;
         const whereClause = {};
+        // ================= FILTERS =================
         if (status) {
             whereClause.status = status;
         }
         if (paymentStatus) {
-            whereClause.Payment = {
+            whereClause.payment = {
                 status: paymentStatus,
             };
         }
@@ -314,16 +314,17 @@ const getAllReservations = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 },
             };
         }
-        // ✅ Filter berdasarkan bookerId
         if (bookerId) {
             whereClause.bookerId = bookerId;
         }
+        // ================= SORTING =================
         let orderBy = { createdAt: "desc" };
         if (sortBy && (sortBy === "createdAt" || sortBy === "checkIn")) {
             orderBy = {
                 [sortBy]: sortOrder === "asc" ? "asc" : "desc",
             };
         }
+        // ================= DATA =================
         const reservations = yield client_1.default.reservation.findMany({
             where: whereClause,
             orderBy,
@@ -334,9 +335,48 @@ const getAllReservations = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 additionalGuests: true,
             },
         });
+        // ================= SUMMARY =================
+        const totalAll = yield client_1.default.reservation.count();
+        const totalFiltered = yield client_1.default.reservation.count({
+            where: whereClause,
+        });
+        // ================= PAID BUT NOT ACTIVE =================
+        const paidButNotActive = yield client_1.default.reservation.count({
+            where: Object.assign(Object.assign({}, whereClause), { status: "CONFIRMED", payment: {
+                    status: "PAID",
+                } }),
+        });
+        const statusGroup = yield client_1.default.reservation.groupBy({
+            by: ["status"],
+            _count: {
+                _all: true,
+            },
+        });
+        const paymentGroup = yield client_1.default.payment.groupBy({
+            by: ["status"],
+            _count: {
+                _all: true,
+            },
+        });
+        const byStatus = statusGroup.reduce((acc, item) => {
+            acc[item.status] = item._count._all;
+            return acc;
+        }, {});
+        const byPayment = paymentGroup.reduce((acc, item) => {
+            acc[item.status] = item._count._all;
+            return acc;
+        }, {});
+        // ================= RESPONSE =================
         return res.status(200).json({
             code: 200,
             data: reservations,
+            summary: {
+                totalAll,
+                totalFiltered,
+                byStatus,
+                byPayment,
+                paidButNotActive
+            },
             message: "Daftar reservasi berhasil diambil",
             status: "sukses",
         });
