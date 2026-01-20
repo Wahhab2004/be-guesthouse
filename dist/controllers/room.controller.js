@@ -155,11 +155,81 @@ const getRoomById = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
     }
 });
 exports.getRoomById = getRoomById;
+const ALLOWED_STATUS = ["AVAILABLE", "BOOKED"];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
 const createRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { name, description, price, status, photoUrl } = req.body;
     try {
+        const { name, description, price, status } = req.body;
+        const photoFile = req.file;
+        /* ================= BASIC VALIDATION ================= */
+        if (!name || typeof name !== "string" || name.trim().length < 3) {
+            return res.status(400).json({
+                code: 400,
+                message: "Nama kamar wajib diisi (min. 3 karakter)",
+                status: "gagal",
+            });
+        }
+        // if (
+        // 	!description ||
+        // 	typeof description !== "string" ||
+        // 	description.trim().length < 10
+        // ) {
+        // 	return res.status(400).json({
+        // 		code: 400,
+        // 		message: "Deskripsi wajib diisi (min. 10 karakter)",
+        // 		status: "gagal",
+        // 	});
+        // }
+        const parsedPrice = parseFloat(price);
+        if (isNaN(parsedPrice) || parsedPrice <= 0) {
+            return res.status(400).json({
+                code: 400,
+                message: "Harga kamar harus lebih dari 0",
+                status: "gagal",
+            });
+        }
+        /* ================= FILE VALIDATION ================= */
+        if (photoFile) {
+            if (!ALLOWED_MIME.includes(photoFile.mimetype)) {
+                return res.status(400).json({
+                    code: 400,
+                    message: "Format foto harus JPG, PNG, atau WebP",
+                    status: "gagal",
+                });
+            }
+            if (photoFile.size > MAX_FILE_SIZE) {
+                return res.status(400).json({
+                    code: 400,
+                    message: "Ukuran foto maksimal 10MB",
+                    status: "gagal",
+                });
+            }
+        }
+        /* ================= BUILD PHOTO URL ================= */
+        let photoUrlFinal = null;
+        if (photoFile) {
+            photoUrlFinal = `/uploads/${photoFile.filename}`;
+        }
+        const existing = yield client_1.default.room.findFirst({
+            where: { name: name.trim() },
+        });
+        if (existing) {
+            return res.status(409).json({
+                code: 409,
+                message: "Nama kamar sudah digunakan",
+                status: "gagal",
+            });
+        }
+        /* ================= CREATE ROOM ================= */
         const newRoom = yield client_1.default.room.create({
-            data: { name, description, price: parseFloat(price), status, photoUrl },
+            data: {
+                name: name.trim(),
+                description: description.trim(),
+                price: parsedPrice,
+                status,
+                photoUrl: photoUrlFinal,
+            },
         });
         return res.status(201).json({
             code: 201,
@@ -169,6 +239,7 @@ const createRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         });
     }
     catch (error) {
+        console.error("Create room error:", error);
         return res.status(500).json({
             code: 500,
             data: null,
@@ -181,10 +252,15 @@ exports.createRoom = createRoom;
 const updateRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const { name, description, price, status, photoUrl } = req.body;
+    const photoFile = req.file;
+    let photoUrlFinal = photoUrl;
+    if (photoFile) {
+        photoUrlFinal = `/uploads/${photoFile.filename}`;
+    }
     try {
         const updatedRoom = yield client_1.default.room.update({
             where: { id },
-            data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (name && { name })), (description && { description })), (price !== undefined && { price: parseFloat(price) })), (status && { status })), (photoUrl && { photoUrl })),
+            data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (name && { name })), (description && { description })), (price !== undefined && { price: parseFloat(price) })), (status && { status })), (photoUrl && { photoUrl: photoUrlFinal })),
         });
         return res.status(200).json({
             code: 200,

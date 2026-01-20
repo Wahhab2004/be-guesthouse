@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../prisma/client";
 
-
 export const getAllRooms = async (_req: Request, res: Response) => {
 	try {
 		const today = new Date();
@@ -48,7 +47,6 @@ export const getAllRooms = async (_req: Request, res: Response) => {
 		});
 	}
 };
-
 
 export const getAvailableRooms = async (req: Request, res: Response) => {
 	try {
@@ -130,7 +128,6 @@ export const getAvailableRooms = async (req: Request, res: Response) => {
 	}
 };
 
-
 export const getRoomById = async (req: Request, res: Response) => {
 	const { id } = req.params;
 	try {
@@ -159,12 +156,94 @@ export const getRoomById = async (req: Request, res: Response) => {
 	}
 };
 
+const ALLOWED_STATUS = ["AVAILABLE", "BOOKED"];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+
 export const createRoom = async (req: Request, res: Response) => {
-	const { name, description, price, status, photoUrl } = req.body;
 	try {
-		const newRoom = await prisma.room.create({
-			data: { name, description, price: parseFloat(price), status, photoUrl },
+		const { name, description, price, status } = req.body;
+		const photoFile = req.file;
+
+		/* ================= BASIC VALIDATION ================= */
+		if (!name || typeof name !== "string" || name.trim().length < 3) {
+			return res.status(400).json({
+				code: 400,
+				message: "Nama kamar wajib diisi (min. 3 karakter)",
+				status: "gagal",
+			});
+		}
+
+		// if (
+		// 	!description ||
+		// 	typeof description !== "string" ||
+		// 	description.trim().length < 10
+		// ) {
+		// 	return res.status(400).json({
+		// 		code: 400,
+		// 		message: "Deskripsi wajib diisi (min. 10 karakter)",
+		// 		status: "gagal",
+		// 	});
+		// }
+
+		const parsedPrice = parseFloat(price);
+		if (isNaN(parsedPrice) || parsedPrice <= 0) {
+			return res.status(400).json({
+				code: 400,
+				message: "Harga kamar harus lebih dari 0",
+				status: "gagal",
+			});
+		}
+
+
+		/* ================= FILE VALIDATION ================= */
+		if (photoFile) {
+			if (!ALLOWED_MIME.includes(photoFile.mimetype)) {
+				return res.status(400).json({
+					code: 400,
+					message: "Format foto harus JPG, PNG, atau WebP",
+					status: "gagal",
+				});
+			}
+
+			if (photoFile.size > MAX_FILE_SIZE) {
+				return res.status(400).json({
+					code: 400,
+					message: "Ukuran foto maksimal 10MB",
+					status: "gagal",
+				});
+			}
+		}
+
+		/* ================= BUILD PHOTO URL ================= */
+		let photoUrlFinal: string | null = null;
+		if (photoFile) {
+			photoUrlFinal = `/uploads/${photoFile.filename}`;
+		}
+
+		const existing = await prisma.room.findFirst({
+			where: { name: name.trim() },
 		});
+
+		if (existing) {
+			return res.status(409).json({
+				code: 409,
+				message: "Nama kamar sudah digunakan",
+				status: "gagal",
+			});
+		}
+
+		/* ================= CREATE ROOM ================= */
+		const newRoom = await prisma.room.create({
+			data: {
+				name: name.trim(),
+				description: description.trim(),
+				price: parsedPrice,
+				status,
+				photoUrl: photoUrlFinal,
+			},
+		});
+
 		return res.status(201).json({
 			code: 201,
 			data: newRoom,
@@ -172,6 +251,7 @@ export const createRoom = async (req: Request, res: Response) => {
 			status: "sukses",
 		});
 	} catch (error) {
+		console.error("Create room error:", error);
 		return res.status(500).json({
 			code: 500,
 			data: null,
@@ -185,6 +265,12 @@ export const updateRoom = async (req: Request, res: Response) => {
 	const { id } = req.params;
 	const { name, description, price, status, photoUrl } = req.body;
 
+	const photoFile = req.file;
+	let photoUrlFinal = photoUrl;
+	if (photoFile) {
+		photoUrlFinal = `/uploads/${photoFile.filename}`;
+	}
+
 	try {
 		const updatedRoom = await prisma.room.update({
 			where: { id },
@@ -193,7 +279,7 @@ export const updateRoom = async (req: Request, res: Response) => {
 				...(description && { description }),
 				...(price !== undefined && { price: parseFloat(price) }),
 				...(status && { status }),
-				...(photoUrl && { photoUrl }),
+				...(photoUrl && { photoUrl: photoUrlFinal }),
 			},
 		});
 
