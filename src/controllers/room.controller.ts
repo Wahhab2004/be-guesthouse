@@ -259,10 +259,11 @@ export const createRoom = async (req: Request, res: Response) => {
 
 export const updateRoom = async (req: Request, res: Response) => {
 	const { id } = req.params;
-	const { name, description, price, status, photoUrl } = req.body;
+	const { name, description, price, status } = req.body;
 
 	const photoFile = req.file;
-	const photoUrlFinal = photoFile ? photoFile.path : photoUrl;
+	const photoUrl = photoFile ? photoFile.path : null;
+	// const photoUrlFinal = photoFile ? photoFile.path : photoUrl;
 
 
 	try {
@@ -273,7 +274,7 @@ export const updateRoom = async (req: Request, res: Response) => {
 				...(description && { description }),
 				...(price !== undefined && { price: parseFloat(price) }),
 				...(status && { status }),
-				...(photoUrl && { photoUrl: photoUrlFinal }),
+				...(photoUrl && { photoUrl }),
 			},
 		});
 
