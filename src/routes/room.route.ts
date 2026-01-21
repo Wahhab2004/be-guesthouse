@@ -8,7 +8,7 @@ import {
   getAvailableRooms
 
 } from "../controllers/room.controller";
-import { upload } from "../utilitas/upload";
+import { upload } from "../lib/upload";
 
 const router = express.Router();
 

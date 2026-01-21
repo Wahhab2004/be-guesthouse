@@ -195,7 +195,6 @@ export const createRoom = async (req: Request, res: Response) => {
 			});
 		}
 
-
 		/* ================= FILE VALIDATION ================= */
 		if (photoFile) {
 			if (!ALLOWED_MIME.includes(photoFile.mimetype)) {
@@ -215,11 +214,8 @@ export const createRoom = async (req: Request, res: Response) => {
 			}
 		}
 
-		/* ================= BUILD PHOTO URL ================= */
-		let photoUrlFinal: string | null = null;
-		if (photoFile) {
-			photoUrlFinal = `/uploads/${photoFile.filename}`;
-		}
+		const photoFile2 = req.file;
+		let photoUrlFinal = photoFile2?.path;
 
 		const existing = await prisma.room.findFirst({
 			where: { name: name.trim() },
@@ -266,10 +262,8 @@ export const updateRoom = async (req: Request, res: Response) => {
 	const { name, description, price, status, photoUrl } = req.body;
 
 	const photoFile = req.file;
-	let photoUrlFinal = photoUrl;
-	if (photoFile) {
-		photoUrlFinal = `/uploads/${photoFile.filename}`;
-	}
+	const photoUrlFinal = photoFile ? photoFile.path : photoUrl;
+
 
 	try {
 		const updatedRoom = await prisma.room.update({

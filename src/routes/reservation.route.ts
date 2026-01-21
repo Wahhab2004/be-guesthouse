@@ -7,7 +7,7 @@ import {
   deleteReservation,
   deleteAllReservations,
 } from "../controllers/reservation.controller";
-import { upload } from "../utilitas/upload";
+import { upload } from "../lib/upload";
 import { authMiddleware } from "../middlewares/authMiddleware";
 
 const router = express.Router();

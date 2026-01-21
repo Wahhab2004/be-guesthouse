@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const room_controller_1 = require("../controllers/room.controller");
-const upload_1 = require("../utilitas/upload");
+const upload_1 = require("../lib/upload");
 const router = express_1.default.Router();
 router.get("/", room_controller_1.getAllRooms);
 router.get("/available", room_controller_1.getAvailableRooms);

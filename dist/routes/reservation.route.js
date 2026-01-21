@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const reservation_controller_1 = require("../controllers/reservation.controller");
-const upload_1 = require("../utilitas/upload");
+const upload_1 = require("../lib/upload");
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const router = express_1.default.Router();
 router.get("/", reservation_controller_1.getAllReservations);

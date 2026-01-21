@@ -554,10 +554,8 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         }, 0);
         // ================= GRAND TOTAL =================
         const totalPrice = totalPriceAdults + totalPriceChildren;
-        let proofUrl = (_c = existing.payment) === null || _c === void 0 ? void 0 : _c.proofUrl;
-        if (proofFile) {
-            proofUrl = `/uploads/${proofFile.filename}`;
-        }
+        const photoUrl = req.file;
+        const proofUrl = photoUrl ? photoUrl.path : (_c = existing.payment) === null || _c === void 0 ? void 0 : _c.proofUrl;
         const updated = yield client_1.default.reservation.update({
             where: { id },
             data: Object.assign(Object.assign(Object.assign({}, (roomId && { room: { connect: { id: roomId } } })), (guestId && { guest: { connect: { id: guestId } } })), { checkIn: newCheckIn, checkOut: newCheckOut, guestTotal: newGuestTotal, totalPrice, status: status || existing.status, payment: {

@@ -206,11 +206,8 @@ const createRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                 });
             }
         }
-        /* ================= BUILD PHOTO URL ================= */
-        let photoUrlFinal = null;
-        if (photoFile) {
-            photoUrlFinal = `/uploads/${photoFile.filename}`;
-        }
+        const photoFile2 = req.file;
+        let photoUrlFinal = photoFile2 === null || photoFile2 === void 0 ? void 0 : photoFile2.path;
         const existing = yield client_1.default.room.findFirst({
             where: { name: name.trim() },
         });
@@ -253,10 +250,7 @@ const updateRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     const { id } = req.params;
     const { name, description, price, status, photoUrl } = req.body;
     const photoFile = req.file;
-    let photoUrlFinal = photoUrl;
-    if (photoFile) {
-        photoUrlFinal = `/uploads/${photoFile.filename}`;
-    }
+    const photoUrlFinal = photoFile ? photoFile.path : photoUrl;
     try {
         const updatedRoom = yield client_1.default.room.update({
             where: { id },

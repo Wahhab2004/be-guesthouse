@@ -665,10 +665,8 @@ export const updateReservation = async (req: Request, res: Response) => {
 		// ================= GRAND TOTAL =================
 		const totalPrice = totalPriceAdults + totalPriceChildren;
 
-		let proofUrl: string | null | undefined = existing.payment?.proofUrl;
-		if (proofFile) {
-			proofUrl = `/uploads/${proofFile.filename}`;
-		}
+		const photoUrl = req.file;
+		const proofUrl = photoUrl ? photoUrl.path : existing.payment?.proofUrl;
 
 		const updated = await prisma.reservation.update({
 			where: { id },
