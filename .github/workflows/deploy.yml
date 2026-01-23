@@ -22,6 +22,7 @@ jobs:
             git pull
             cd ..
 
+
             docker compose build backend
             docker compose up -d backend
 
