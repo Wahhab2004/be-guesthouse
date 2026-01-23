@@ -248,13 +248,14 @@ const createRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
 exports.createRoom = createRoom;
 const updateRoom = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
-    const { name, description, price, status, photoUrl } = req.body;
+    const { name, description, price, status } = req.body;
     const photoFile = req.file;
-    const photoUrlFinal = photoFile ? photoFile.path : photoUrl;
+    const photoUrl = photoFile ? photoFile.path : null;
+    // const photoUrlFinal = photoFile ? photoFile.path : photoUrl;
     try {
         const updatedRoom = yield client_1.default.room.update({
             where: { id },
-            data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (name && { name })), (description && { description })), (price !== undefined && { price: parseFloat(price) })), (status && { status })), (photoUrl && { photoUrl: photoUrlFinal })),
+            data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (name && { name })), (description && { description })), (price !== undefined && { price: parseFloat(price) })), (status && { status })), (photoUrl && { photoUrl })),
         });
         return res.status(200).json({
             code: 200,
