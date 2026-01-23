@@ -1,18 +1,32 @@
-- name: Deploy Backend to VPS
-  uses: appleboy/ssh-action@v1.0.3
-  with:
-    host: ${{ secrets.VPS_HOST }}
-    username: ${{ secrets.VPS_USER }}
-    key: ${{ secrets.VPS_SSH_KEY }}
-    script: |
-      echo "${{ secrets.VPS_SSH_KEY }}" | base64 -d > key.pem
-      chmod 600 key.pem
+name: Deploy Backend
 
-      cd ${{ secrets.VPS_PATH }}
+on:
+  push:
+    branches: [main]
 
-      cd be-guesthouse
-      git pull
-      cd ..
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Backend to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            echo "${{ secrets.VPS_SSH_KEY }}" | base64 -d > key.pem
+            chmod 600 key.pem
+            
+            cd ${{ secrets.VPS_PATH }}
 
-      docker compose build backend
-      docker compose up -d backend
+            echo "Updating backend..."
+            cd be-guesthouse
+            git pull
+            cd ..
+
+
+            docker compose build backend
+            docker compose up -d backend
+
+            docker image prune -f
