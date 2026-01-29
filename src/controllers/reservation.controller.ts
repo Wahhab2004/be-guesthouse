@@ -328,6 +328,7 @@ export const getAllReservations = async (req: Request, res: Response) => {
 			guestName,
 			roomName,
 			bookerId,
+			guestId,
 			sortBy,
 			sortOrder,
 		} = req.query;
@@ -378,6 +379,10 @@ export const getAllReservations = async (req: Request, res: Response) => {
 
 		if (bookerId) {
 			whereClause.bookerId = bookerId;
+		}
+
+		if (guestId) {
+			whereClause.guestId = guestId;
 		}
 
 		// ================= SORTING =================
