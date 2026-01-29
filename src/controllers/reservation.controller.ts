@@ -377,12 +377,18 @@ export const getAllReservations = async (req: Request, res: Response) => {
 			};
 		}
 
+		const orConditions = [];
+
 		if (bookerId) {
-			whereClause.bookerId = bookerId;
+			orConditions.push({ bookerId });
 		}
 
 		if (guestId) {
-			whereClause.guestId = guestId;
+			orConditions.push({ guestId });
+		}
+
+		if (orConditions.length > 0) {
+			whereClause.OR = orConditions;
 		}
 
 		// ================= SORTING =================
@@ -457,7 +463,7 @@ export const getAllReservations = async (req: Request, res: Response) => {
 				totalFiltered,
 				byStatus,
 				byPayment,
-				paidButNotActive
+				paidButNotActive,
 			},
 			message: "Daftar reservasi berhasil diambil",
 			status: "sukses",
