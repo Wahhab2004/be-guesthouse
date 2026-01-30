@@ -216,13 +216,6 @@ export const createReservation = async (req: Request, res: Response) => {
 		if (days === 1 && adultCount === 6) {
 			totalAdultDiscount = 1000 * adultCount;
 		}
-
-		// Harga dewasa setelah diskon (tidak boleh minus)
-		const totalPriceAdults = Math.max(
-			totalPriceAdultsRaw - totalAdultDiscount,
-			0,
-		);
-
 		// ================= CHILD PRICING =================
 		const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
 			if (ag.priceCategory === "FULL") return sum + room.price * days;
@@ -231,8 +224,17 @@ export const createReservation = async (req: Request, res: Response) => {
 			return sum; // FREE = 0
 		}, 0);
 
-		// ================= GRAND TOTAL =================
-		const totalPrice = totalPriceAdults + totalPriceChildren;
+		// ================= SUBTOTAL =================
+		const subTotalPrice = totalPriceAdultsRaw + totalPriceChildren;
+
+		// ================= DISCOUNT =================
+
+		const discountAmount = Math.min (
+			totalAdultDiscount, subTotalPrice,
+		)
+
+		// ================= FINAL PRICE =================
+		const finalPrice = subTotalPrice - discountAmount;
 
 		let bookerId: string;
 		if (token) {
@@ -257,7 +259,9 @@ export const createReservation = async (req: Request, res: Response) => {
 				...(guestId && { guest: { connect: { id: guestId } } }),
 				checkIn: checkInDate,
 				checkOut: checkOutDate,
-				totalPrice,
+				subTotalPrice,
+				discountAmount,
+				finalPrice,
 				guestTotal: totalGuest,
 				adultCount,
 				childCount,
@@ -268,7 +272,7 @@ export const createReservation = async (req: Request, res: Response) => {
 					create: {
 						method: "E_WALLET",
 						status: "UNPAID",
-						amount: totalPrice,
+						amount: finalPrice,
 					},
 				},
 				...(isAdmin
@@ -310,6 +314,233 @@ export const createReservation = async (req: Request, res: Response) => {
 		return res.status(500).json({
 			code: 500,
 			message: "Failed to create reservation",
+			status: "failed",
+		});
+	}
+};
+
+// PUT /api/reservations/:id - Update reservation by ID
+export const updateReservation = async (req: Request, res: Response) => {
+	const { id } = req.params;
+
+	const {
+		roomId,
+		guestId,
+		checkIn,
+		checkOut,
+		guestTotal,
+		status,
+		paymentStatus,
+		paymentMethod,
+		paymentSender,
+		discountPrice,
+	} = req.body;
+
+	const token = req.headers.authorization?.split(" ")[1];
+
+	if (!token) {
+		return res.status(401).json({
+			code: 401,
+			message: "Token is required.",
+			status: "unauthorized",
+		});
+	}
+
+	let decoded: any;
+	let role: "admin" | "guest" | null = null;
+
+	try {
+		try {
+			decoded = jwt.verify(token, process.env.ADMIN_SECRET!);
+			role = "admin";
+		} catch {
+			decoded = jwt.verify(token, process.env.GUEST_SECRET!);
+			role = "guest";
+		}
+	} catch {
+		return res.status(403).json({
+			code: 403,
+			message: "Invalid token.",
+			status: "forbidden",
+		});
+	}
+
+	try {
+		const existing = await prisma.reservation.findUnique({
+			where: { id },
+			include: {
+				payment: true,
+				additionalGuests: true,
+			},
+		});
+
+		if (!existing) {
+			return res.status(404).json({
+				code: 404,
+				message: "Reservation not found.",
+				status: "failed",
+			});
+		}
+
+		if (role === "guest" && existing.bookerId !== decoded.id) {
+			return res.status(403).json({
+				code: 403,
+				message: "You do not have permission to modify this reservation.",
+				status: "forbidden",
+			});
+		}
+
+		const newCheckIn = checkIn ? new Date(checkIn) : existing.checkIn;
+		const newCheckOut = checkOut ? new Date(checkOut) : existing.checkOut;
+		const newGuestTotal = guestTotal
+			? parseInt(guestTotal, 10)
+			: existing.guestTotal;
+
+		const days = differenceInDays(newCheckOut, newCheckIn);
+		if (days <= 0) {
+			return res.status(400).json({
+				code: 400,
+				message: "Check-out date must be after check-in date.",
+				status: "failed",
+			});
+		}
+
+		const conflict = await prisma.reservation.findFirst({
+			where: {
+				roomId: roomId || existing.roomId,
+				id: { not: id },
+				OR: [
+					{ checkIn: { lte: newCheckOut, gte: newCheckIn } },
+					{ checkOut: { lte: newCheckOut, gte: newCheckIn } },
+					{
+						AND: [
+							{ checkIn: { lte: newCheckIn } },
+							{ checkOut: { gte: newCheckOut } },
+						],
+					},
+				],
+			},
+		});
+
+		if (conflict) {
+			return res.status(400).json({
+				code: 400,
+				message: "Selected dates conflict with another reservation.",
+				status: "failed",
+			});
+		}
+
+		const room = await prisma.room.findUnique({
+			where: { id: roomId || existing.roomId },
+		});
+
+		// Harga dewasa tanpa diskon
+		const totalPriceAdultsRaw = existing.adultCount * (room?.price || 0) * days;
+
+		// Siapkan additionalGuests untuk pricing anak
+		const processedAdditionalGuests =
+			existing.additionalGuests?.map((ag) => ({
+				priceCategory: ag.priceCategory!,
+			})) || [];
+
+		// ================= ADULT DISCOUNT =================
+		let totalAdultDiscount = 0;
+
+		// Rule 1: 3–4 hari → ¥500 per hari per dewasa
+		if (days >= 3 && days <= 4) {
+			totalAdultDiscount = 500 * days * existing.adultCount;
+		}
+
+		// Rule 2: >= 5 hari → ¥1000 per hari per dewasa
+		if (days >= 5) {
+			totalAdultDiscount = 1000 * days * existing.adultCount;
+		}
+
+		// Rule 3: 1 hari + 6 dewasa → ¥1000 per dewasa (flat)
+		if (days === 1 && existing.adultCount === 6) {
+			totalAdultDiscount = 1000 * existing.adultCount;
+		}
+
+		// ================= CHILD PRICING =================
+		const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
+			if (ag.priceCategory === "FULL") return sum + (room?.price || 0) * days;
+			if (ag.priceCategory === "HALF")
+				return sum + (room?.price || 0) * 0.5 * days;
+			return sum; // FREE
+		}, 0);
+
+		// ================= SUBTOTAL =================
+		const subTotalPrice = totalPriceAdultsRaw + totalPriceChildren;
+
+		// ================= AUTO DISCOUNT =================
+		let discountAmount = Math.min(
+			totalAdultDiscount,
+			subTotalPrice
+		)
+
+		// ================= SUBTOTAL =================
+		if (role === "admin" && discountPrice !== undefined) {
+			const manualDiscount = parseFloat(discountPrice);
+
+			if  (isNaN(manualDiscount) || manualDiscount < 0 ){
+				return res.status(400).json({
+					code: 400,
+					message: "discountPrice must be a valid positive number",
+					status: "failed",
+				})
+			}
+
+			discountAmount = Math.min(
+				manualDiscount,
+				subTotalPrice
+			)
+		}
+
+		// ================= FINAL =================
+		const finalPrice = subTotalPrice - discountAmount
+
+		const photoUrl = req.file;
+		const proofUrl = photoUrl ? photoUrl.path : existing.payment?.proofUrl;
+
+		const updated = await prisma.reservation.update({
+			where: { id },
+			data: {
+				...(roomId && { room: { connect: { id: roomId } } }),
+				...(guestId && { guest: { connect: { id: guestId } } }),
+				checkIn: newCheckIn,
+				checkOut: newCheckOut,
+				guestTotal: newGuestTotal,
+				subTotalPrice,
+				discountAmount,
+				finalPrice,
+				status: status || existing.status,
+				payment: {
+					update: {
+						status: paymentStatus || existing.payment?.status,
+						method: paymentMethod || existing.payment?.method,
+						sender:
+							paymentSender !== undefined
+								? paymentSender
+								: existing.payment?.sender,
+						proofUrl,
+						amount: finalPrice
+					},
+				},
+			},
+			include: { payment: true },
+		});
+
+		return res.status(200).json({
+			code: 200,
+			data: updated,
+			message: "Reservation updated successfully.",
+			status: "success",
+		});
+	} catch (error) {
+		console.error("Failed to update reservation:", error);
+		return res.status(500).json({
+			code: 500,
+			message: "Failed to update reservation.",
 			status: "failed",
 		});
 	}
@@ -513,209 +744,6 @@ export const getReservationById = async (req: Request, res: Response) => {
 			code: 500,
 			message: "Gagal mengambil detail reservasi",
 			status: "gagal",
-		});
-	}
-};
-
-// PUT /api/reservations/:id - Update reservation by ID
-export const updateReservation = async (req: Request, res: Response) => {
-	const { id } = req.params;
-
-	const {
-		roomId,
-		guestId,
-		checkIn,
-		checkOut,
-		guestTotal,
-		status,
-		paymentStatus,
-		paymentMethod,
-		paymentSender,
-	} = req.body;
-
-	const proofFile = req.file;
-	const token = req.headers.authorization?.split(" ")[1];
-
-	if (!token) {
-		return res.status(401).json({
-			code: 401,
-			message: "Token is required.",
-			status: "unauthorized",
-		});
-	}
-
-	let decoded: any;
-	let role: "admin" | "guest" | null = null;
-
-	try {
-		try {
-			decoded = jwt.verify(token, process.env.ADMIN_SECRET!);
-			role = "admin";
-		} catch {
-			decoded = jwt.verify(token, process.env.GUEST_SECRET!);
-			role = "guest";
-		}
-	} catch {
-		return res.status(403).json({
-			code: 403,
-			message: "Invalid token.",
-			status: "forbidden",
-		});
-	}
-
-	try {
-		const existing = await prisma.reservation.findUnique({
-			where: { id },
-			include: {
-				payment: true,
-				additionalGuests: true,
-			},
-		});
-
-		if (!existing) {
-			return res.status(404).json({
-				code: 404,
-				message: "Reservation not found.",
-				status: "failed",
-			});
-		}
-
-		if (role === "guest" && existing.bookerId !== decoded.id) {
-			return res.status(403).json({
-				code: 403,
-				message: "You do not have permission to modify this reservation.",
-				status: "forbidden",
-			});
-		}
-
-		const newCheckIn = checkIn ? new Date(checkIn) : existing.checkIn;
-		const newCheckOut = checkOut ? new Date(checkOut) : existing.checkOut;
-		const newGuestTotal = guestTotal
-			? parseInt(guestTotal, 10)
-			: existing.guestTotal;
-
-		const days = differenceInDays(newCheckOut, newCheckIn);
-		if (days <= 0) {
-			return res.status(400).json({
-				code: 400,
-				message: "Check-out date must be after check-in date.",
-				status: "failed",
-			});
-		}
-
-		const conflict = await prisma.reservation.findFirst({
-			where: {
-				roomId: roomId || existing.roomId,
-				id: { not: id },
-				OR: [
-					{ checkIn: { lte: newCheckOut, gte: newCheckIn } },
-					{ checkOut: { lte: newCheckOut, gte: newCheckIn } },
-					{
-						AND: [
-							{ checkIn: { lte: newCheckIn } },
-							{ checkOut: { gte: newCheckOut } },
-						],
-					},
-				],
-			},
-		});
-
-		if (conflict) {
-			return res.status(400).json({
-				code: 400,
-				message: "Selected dates conflict with another reservation.",
-				status: "failed",
-			});
-		}
-
-		const room = await prisma.room.findUnique({
-			where: { id: roomId || existing.roomId },
-		});
-
-		// Harga dewasa tanpa diskon
-		const totalPriceAdultsRaw = existing.adultCount * (room?.price || 0) * days;
-
-		// Siapkan additionalGuests untuk pricing anak
-		const processedAdditionalGuests =
-			existing.additionalGuests?.map((ag) => ({
-				priceCategory: ag.priceCategory!,
-			})) || [];
-
-		// ================= ADULT DISCOUNT =================
-		let totalAdultDiscount = 0;
-
-		// Rule 1: 3–4 hari → ¥500 per hari per dewasa
-		if (days >= 3 && days <= 4) {
-			totalAdultDiscount = 500 * days * existing.adultCount;
-		}
-
-		// Rule 2: >= 5 hari → ¥1000 per hari per dewasa
-		if (days >= 5) {
-			totalAdultDiscount = 1000 * days * existing.adultCount;
-		}
-
-		// Rule 3: 1 hari + 6 dewasa → ¥1000 per dewasa (flat)
-		if (days === 1 && existing.adultCount === 6) {
-			totalAdultDiscount = 1000 * existing.adultCount;
-		}
-
-		// Harga dewasa setelah diskon
-		const totalPriceAdults = Math.max(
-			totalPriceAdultsRaw - totalAdultDiscount,
-			0,
-		);
-
-		// ================= CHILD PRICING =================
-		const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
-			if (ag.priceCategory === "FULL") return sum + (room?.price || 0) * days;
-			if (ag.priceCategory === "HALF")
-				return sum + (room?.price || 0) * 0.5 * days;
-			return sum; // FREE
-		}, 0);
-
-		// ================= GRAND TOTAL =================
-		const totalPrice = totalPriceAdults + totalPriceChildren;
-
-		const photoUrl = req.file;
-		const proofUrl = photoUrl ? photoUrl.path : existing.payment?.proofUrl;
-
-		const updated = await prisma.reservation.update({
-			where: { id },
-			data: {
-				...(roomId && { room: { connect: { id: roomId } } }),
-				...(guestId && { guest: { connect: { id: guestId } } }),
-				checkIn: newCheckIn,
-				checkOut: newCheckOut,
-				guestTotal: newGuestTotal,
-				totalPrice,
-				status: status || existing.status,
-				payment: {
-					update: {
-						status: paymentStatus || existing.payment?.status,
-						method: paymentMethod || existing.payment?.method,
-						sender:
-							paymentSender !== undefined
-								? paymentSender
-								: existing.payment?.sender,
-						proofUrl,
-					},
-				},
-			},
-			include: { payment: true },
-		});
-
-		return res.status(200).json({
-			code: 200,
-			data: updated,
-			message: "Reservation updated successfully.",
-			status: "success",
-		});
-	} catch (error) {
-		console.error("Failed to update reservation:", error);
-		return res.status(500).json({
-			code: 500,
-			message: "Failed to update reservation.",
-			status: "failed",
 		});
 	}
 };

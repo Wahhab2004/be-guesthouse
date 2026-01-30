@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAllReservations = exports.deleteReservation = exports.updateReservation = exports.getReservationById = exports.getAllReservations = exports.createReservation = void 0;
+exports.deleteAllReservations = exports.deleteReservation = exports.getReservationById = exports.getAllReservations = exports.updateReservation = exports.createReservation = void 0;
 const client_1 = __importDefault(require("../prisma/client"));
 const date_fns_1 = require("date-fns");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -196,8 +196,6 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         if (days === 1 && adultCount === 6) {
             totalAdultDiscount = 1000 * adultCount;
         }
-        // Harga dewasa setelah diskon (tidak boleh minus)
-        const totalPriceAdults = Math.max(totalPriceAdultsRaw - totalAdultDiscount, 0);
         // ================= CHILD PRICING =================
         const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
             if (ag.priceCategory === "FULL")
@@ -206,8 +204,12 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 return sum + room.price * 0.5 * days;
             return sum; // FREE = 0
         }, 0);
-        // ================= GRAND TOTAL =================
-        const totalPrice = totalPriceAdults + totalPriceChildren;
+        // ================= SUBTOTAL =================
+        const subTotalPrice = totalPriceAdultsRaw + totalPriceChildren;
+        // ================= DISCOUNT =================
+        const discountAmount = Math.min(totalAdultDiscount, subTotalPrice);
+        // ================= FINAL PRICE =================
+        const finalPrice = subTotalPrice - discountAmount;
         let bookerId;
         if (token) {
             try {
@@ -221,14 +223,16 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         }
         // Buat reservasi dan pembayaran, sekaligus buat additionalGuests
         const reservation = yield client_1.default.reservation.create({
-            data: Object.assign(Object.assign(Object.assign(Object.assign({}, (guestId && { guest: { connect: { id: guestId } } })), { checkIn: checkInDate, checkOut: checkOutDate, totalPrice, guestTotal: totalGuest, adultCount,
+            data: Object.assign(Object.assign(Object.assign(Object.assign({}, (guestId && { guest: { connect: { id: guestId } } })), { checkIn: checkInDate, checkOut: checkOutDate, subTotalPrice,
+                discountAmount,
+                finalPrice, guestTotal: totalGuest, adultCount,
                 childCount, additionalGuests: {
                     create: processedAdditionalGuests,
                 }, payment: {
                     create: {
                         method: "E_WALLET",
                         status: "UNPAID",
-                        amount: totalPrice,
+                        amount: finalPrice,
                     },
                 } }), (isAdmin
                 ? { bookerAdmin: { connect: { id: bookerId } } }
@@ -270,170 +274,11 @@ const createReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.createReservation = createReservation;
-// GET /api/reservations - Get all reservations with filters
-const getAllReservations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { status, paymentStatus, startDate, endDate, checkInStart, checkInEnd, guestName, roomName, bookerId, sortBy, sortOrder, } = req.query;
-        const whereClause = {};
-        // ================= FILTERS =================
-        if (status) {
-            whereClause.status = status;
-        }
-        if (paymentStatus) {
-            whereClause.payment = {
-                status: paymentStatus,
-            };
-        }
-        if (startDate || endDate) {
-            whereClause.createdAt = {};
-            if (startDate)
-                whereClause.createdAt.gte = new Date(startDate);
-            if (endDate)
-                whereClause.createdAt.lte = new Date(endDate);
-        }
-        if (checkInStart || checkInEnd) {
-            whereClause.checkIn = {};
-            if (checkInStart)
-                whereClause.checkIn.gte = new Date(checkInStart);
-            if (checkInEnd)
-                whereClause.checkIn.lte = new Date(checkInEnd);
-        }
-        if (guestName) {
-            whereClause.guest = {
-                name: {
-                    contains: guestName,
-                    mode: "insensitive",
-                },
-            };
-        }
-        if (roomName) {
-            whereClause.room = {
-                name: {
-                    contains: roomName,
-                    mode: "insensitive",
-                },
-            };
-        }
-        if (bookerId) {
-            whereClause.bookerId = bookerId;
-        }
-        // ================= SORTING =================
-        let orderBy = { createdAt: "desc" };
-        if (sortBy && (sortBy === "createdAt" || sortBy === "checkIn")) {
-            orderBy = {
-                [sortBy]: sortOrder === "asc" ? "asc" : "desc",
-            };
-        }
-        // ================= DATA =================
-        const reservations = yield client_1.default.reservation.findMany({
-            where: whereClause,
-            orderBy,
-            include: {
-                guest: true,
-                room: true,
-                payment: true,
-                additionalGuests: true,
-            },
-        });
-        // ================= SUMMARY =================
-        const totalAll = yield client_1.default.reservation.count();
-        const totalFiltered = yield client_1.default.reservation.count({
-            where: whereClause,
-        });
-        // ================= PAID BUT NOT ACTIVE =================
-        const paidButNotActive = yield client_1.default.reservation.count({
-            where: Object.assign(Object.assign({}, whereClause), { status: "CONFIRMED", payment: {
-                    status: "PAID",
-                } }),
-        });
-        const statusGroup = yield client_1.default.reservation.groupBy({
-            by: ["status"],
-            _count: {
-                _all: true,
-            },
-        });
-        const paymentGroup = yield client_1.default.payment.groupBy({
-            by: ["status"],
-            _count: {
-                _all: true,
-            },
-        });
-        const byStatus = statusGroup.reduce((acc, item) => {
-            acc[item.status] = item._count._all;
-            return acc;
-        }, {});
-        const byPayment = paymentGroup.reduce((acc, item) => {
-            acc[item.status] = item._count._all;
-            return acc;
-        }, {});
-        // ================= RESPONSE =================
-        return res.status(200).json({
-            code: 200,
-            data: reservations,
-            summary: {
-                totalAll,
-                totalFiltered,
-                byStatus,
-                byPayment,
-                paidButNotActive
-            },
-            message: "Daftar reservasi berhasil diambil",
-            status: "sukses",
-        });
-    }
-    catch (error) {
-        console.error("Gagal mengambil reservasi:", error);
-        return res.status(500).json({
-            code: 500,
-            message: "Gagal mengambil reservasi",
-            status: "gagal",
-        });
-    }
-});
-exports.getAllReservations = getAllReservations;
-// GET /api/reservations/:id - Get reservation by ID
-const getReservationById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    try {
-        const reservation = yield client_1.default.reservation.findUnique({
-            where: { id },
-            include: {
-                guest: true,
-                room: true,
-                payment: true,
-                additionalGuests: true,
-            },
-        });
-        if (!reservation) {
-            return res.status(404).json({
-                code: 404,
-                message: "Reservasi tidak ditemukan",
-                status: "gagal",
-            });
-        }
-        return res.status(200).json({
-            code: 200,
-            data: reservation,
-            message: "Detail reservasi berhasil diambil",
-            status: "sukses",
-        });
-    }
-    catch (error) {
-        console.error("Gagal mengambil detail reservasi:", error);
-        return res.status(500).json({
-            code: 500,
-            message: "Gagal mengambil detail reservasi",
-            status: "gagal",
-        });
-    }
-});
-exports.getReservationById = getReservationById;
 // PUT /api/reservations/:id - Update reservation by ID
 const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b, _c, _d, _e, _f;
     const { id } = req.params;
-    const { roomId, guestId, checkIn, checkOut, guestTotal, status, paymentStatus, paymentMethod, paymentSender, } = req.body;
-    const proofFile = req.file;
+    const { roomId, guestId, checkIn, checkOut, guestTotal, status, paymentStatus, paymentMethod, paymentSender, discountPrice, } = req.body;
     const token = (_a = req.headers.authorization) === null || _a === void 0 ? void 0 : _a.split(" ")[1];
     if (!token) {
         return res.status(401).json({
@@ -542,8 +387,6 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         if (days === 1 && existing.adultCount === 6) {
             totalAdultDiscount = 1000 * existing.adultCount;
         }
-        // Harga dewasa setelah diskon
-        const totalPriceAdults = Math.max(totalPriceAdultsRaw - totalAdultDiscount, 0);
         // ================= CHILD PRICING =================
         const totalPriceChildren = processedAdditionalGuests.reduce((sum, ag) => {
             if (ag.priceCategory === "FULL")
@@ -552,13 +395,31 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 return sum + ((room === null || room === void 0 ? void 0 : room.price) || 0) * 0.5 * days;
             return sum; // FREE
         }, 0);
-        // ================= GRAND TOTAL =================
-        const totalPrice = totalPriceAdults + totalPriceChildren;
+        // ================= SUBTOTAL =================
+        const subTotalPrice = totalPriceAdultsRaw + totalPriceChildren;
+        // ================= AUTO DISCOUNT =================
+        let discountAmount = Math.min(totalAdultDiscount, subTotalPrice);
+        // ================= SUBTOTAL =================
+        if (role === "admin" && discountPrice !== undefined) {
+            const manualDiscount = parseFloat(discountPrice);
+            if (isNaN(manualDiscount) || manualDiscount < 0) {
+                return res.status(400).json({
+                    code: 400,
+                    message: "discountPrice must be a valid positive number",
+                    status: "failed",
+                });
+            }
+            discountAmount = Math.min(manualDiscount, subTotalPrice);
+        }
+        // ================= FINAL =================
+        const finalPrice = subTotalPrice - discountAmount;
         const photoUrl = req.file;
         const proofUrl = photoUrl ? photoUrl.path : (_c = existing.payment) === null || _c === void 0 ? void 0 : _c.proofUrl;
         const updated = yield client_1.default.reservation.update({
             where: { id },
-            data: Object.assign(Object.assign(Object.assign({}, (roomId && { room: { connect: { id: roomId } } })), (guestId && { guest: { connect: { id: guestId } } })), { checkIn: newCheckIn, checkOut: newCheckOut, guestTotal: newGuestTotal, totalPrice, status: status || existing.status, payment: {
+            data: Object.assign(Object.assign(Object.assign({}, (roomId && { room: { connect: { id: roomId } } })), (guestId && { guest: { connect: { id: guestId } } })), { checkIn: newCheckIn, checkOut: newCheckOut, guestTotal: newGuestTotal, subTotalPrice,
+                discountAmount,
+                finalPrice, status: status || existing.status, payment: {
                     update: {
                         status: paymentStatus || ((_d = existing.payment) === null || _d === void 0 ? void 0 : _d.status),
                         method: paymentMethod || ((_e = existing.payment) === null || _e === void 0 ? void 0 : _e.method),
@@ -566,6 +427,7 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                             ? paymentSender
                             : (_f = existing.payment) === null || _f === void 0 ? void 0 : _f.sender,
                         proofUrl,
+                        amount: finalPrice
                     },
                 } }),
             include: { payment: true },
@@ -587,6 +449,171 @@ const updateReservation = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.updateReservation = updateReservation;
+// GET /api/reservations - Get all reservations with filters
+const getAllReservations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { status, paymentStatus, startDate, endDate, checkInStart, checkInEnd, guestName, roomName, bookerId, guestId, sortBy, sortOrder, } = req.query;
+        const whereClause = {};
+        // ================= FILTERS =================
+        if (status) {
+            whereClause.status = status;
+        }
+        if (paymentStatus) {
+            whereClause.payment = {
+                status: paymentStatus,
+            };
+        }
+        if (startDate || endDate) {
+            whereClause.createdAt = {};
+            if (startDate)
+                whereClause.createdAt.gte = new Date(startDate);
+            if (endDate)
+                whereClause.createdAt.lte = new Date(endDate);
+        }
+        if (checkInStart || checkInEnd) {
+            whereClause.checkIn = {};
+            if (checkInStart)
+                whereClause.checkIn.gte = new Date(checkInStart);
+            if (checkInEnd)
+                whereClause.checkIn.lte = new Date(checkInEnd);
+        }
+        if (guestName) {
+            whereClause.guest = {
+                name: {
+                    contains: guestName,
+                    mode: "insensitive",
+                },
+            };
+        }
+        if (roomName) {
+            whereClause.room = {
+                name: {
+                    contains: roomName,
+                    mode: "insensitive",
+                },
+            };
+        }
+        const orConditions = [];
+        if (bookerId) {
+            orConditions.push({ bookerId });
+        }
+        if (guestId) {
+            orConditions.push({ guestId });
+        }
+        if (orConditions.length > 0) {
+            whereClause.OR = orConditions;
+        }
+        // ================= SORTING =================
+        let orderBy = { createdAt: "desc" };
+        if (sortBy && (sortBy === "createdAt" || sortBy === "checkIn")) {
+            orderBy = {
+                [sortBy]: sortOrder === "asc" ? "asc" : "desc",
+            };
+        }
+        // ================= DATA =================
+        const reservations = yield client_1.default.reservation.findMany({
+            where: whereClause,
+            orderBy,
+            include: {
+                guest: true,
+                room: true,
+                payment: true,
+                additionalGuests: true,
+            },
+        });
+        // ================= SUMMARY =================
+        const totalAll = yield client_1.default.reservation.count();
+        const totalFiltered = yield client_1.default.reservation.count({
+            where: whereClause,
+        });
+        // ================= PAID BUT NOT ACTIVE =================
+        const paidButNotActive = yield client_1.default.reservation.count({
+            where: Object.assign(Object.assign({}, whereClause), { status: "CONFIRMED", payment: {
+                    status: "PAID",
+                } }),
+        });
+        const statusGroup = yield client_1.default.reservation.groupBy({
+            by: ["status"],
+            _count: {
+                _all: true,
+            },
+        });
+        const paymentGroup = yield client_1.default.payment.groupBy({
+            by: ["status"],
+            _count: {
+                _all: true,
+            },
+        });
+        const byStatus = statusGroup.reduce((acc, item) => {
+            acc[item.status] = item._count._all;
+            return acc;
+        }, {});
+        const byPayment = paymentGroup.reduce((acc, item) => {
+            acc[item.status] = item._count._all;
+            return acc;
+        }, {});
+        // ================= RESPONSE =================
+        return res.status(200).json({
+            code: 200,
+            data: reservations,
+            summary: {
+                totalAll,
+                totalFiltered,
+                byStatus,
+                byPayment,
+                paidButNotActive,
+            },
+            message: "Daftar reservasi berhasil diambil",
+            status: "sukses",
+        });
+    }
+    catch (error) {
+        console.error("Gagal mengambil reservasi:", error);
+        return res.status(500).json({
+            code: 500,
+            message: "Gagal mengambil reservasi",
+            status: "gagal",
+        });
+    }
+});
+exports.getAllReservations = getAllReservations;
+// GET /api/reservations/:id - Get reservation by ID
+const getReservationById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    try {
+        const reservation = yield client_1.default.reservation.findUnique({
+            where: { id },
+            include: {
+                guest: true,
+                room: true,
+                payment: true,
+                additionalGuests: true,
+            },
+        });
+        if (!reservation) {
+            return res.status(404).json({
+                code: 404,
+                message: "Reservasi tidak ditemukan",
+                status: "gagal",
+            });
+        }
+        return res.status(200).json({
+            code: 200,
+            data: reservation,
+            message: "Detail reservasi berhasil diambil",
+            status: "sukses",
+        });
+    }
+    catch (error) {
+        console.error("Gagal mengambil detail reservasi:", error);
+        return res.status(500).json({
+            code: 500,
+            message: "Gagal mengambil detail reservasi",
+            status: "gagal",
+        });
+    }
+});
+exports.getReservationById = getReservationById;
 // DELETE /api/reservations/:id - Delete reservation by ID
 const deleteReservation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;

@@ -45,7 +45,9 @@ async function main() {
       guestTotal: 2,
       adultCount: 1,
       childCount: 1,
-      totalPrice: 1000000,
+      subTotalPrice: 10000,
+      discountAmount: 2000,
+      finalPrice: 8000,
       status: ReservationStatus.CONFIRMED,
       additionalGuests: {
         create: [

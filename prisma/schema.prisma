@@ -75,7 +75,9 @@ model Reservation {
   guestTotal      Int
   adultCount      Int
   childCount      Int
-  totalPrice      Float
+  subTotalPrice   Float // Total harga tanpa diskon
+  discountAmount  Float @default(0) // Total diskon yang didapat
+  finalPrice      Float  // Harga akhir setelah diskon
   status          ReservationStatus  @default(PENDING)
   createdAt       DateTime           @default(now())
   additionalGuests AdditionalGuest[]
@@ -137,7 +139,7 @@ model Payment {
   amount        Float
   proofUrl      String?
   paidAt        DateTime?
-  sender    String?
+  sender        String?
 }
 
 enum PaymentMethod {
