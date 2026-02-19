@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../prisma/client";
 
 export const createPayment = async (req: Request, res: Response) => {
-	const { reservationId, method, amount, proofUrl } = req.body;
+	const { reservationId, method, amount } = req.body;
 
 	if (!reservationId || !method || !amount) {
 		return res.status(400).json({
@@ -38,6 +38,9 @@ export const createPayment = async (req: Request, res: Response) => {
 				status: "gagal",
 			});
 		}
+
+		const photoUrl = req.file;
+		const proofUrl = photoUrl ? photoUrl.path : null;
 
 		const payment = await prisma.payment.create({
 			data: {
@@ -96,7 +99,7 @@ export const getAllPayments = async (_req: Request, res: Response) => {
 
 export const updatePayment = async (req: Request, res: Response) => {
 	const { id } = req.params;
-	const { status, method, proofUrl, paidAt, paymentSender } = req.body;
+	const { status, method, paidAt, paymentSender } = req.body;
 
 	// Validate status if provided
 	if (status && !["PAID", "HALF_PAID", "UNPAID", "REFUNDED"].includes(status)) {
@@ -121,14 +124,17 @@ export const updatePayment = async (req: Request, res: Response) => {
 			});
 		}
 
+		const photoUrl = req.file;
+		const proofUrl = photoUrl ? photoUrl.path : null;
+
 		// If proofUrl in DB is still empty/null, request must include proofUrl
-		if (!existingPayment.proofUrl && (!proofUrl || proofUrl.trim() === "")) {
-			return res.status(400).json({
-				code: 400,
-				message: "Payment proof (proofUrl) is required",
-				status: "failed",
-			});
-		}
+		// if (!existingPayment.proofUrl && (!proofUrl || (proofUrl && proofUrl.trim() === ""))) {
+		// 	return res.status(400).json({
+		// 		code: 400,
+		// 		message: "Payment proof (proofUrl) is required",
+		// 		status: "failed",
+		// 	});
+		// }
 
 		if (!paymentSender) {
 			return res.status(400).json({
@@ -164,8 +170,6 @@ export const updatePayment = async (req: Request, res: Response) => {
 		});
 	}
 };
-
-
 
 export const deletePayment = async (req: Request, res: Response) => {
 	const { id } = req.params;

@@ -15,7 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deletePayment = exports.updatePayment = exports.getAllPayments = exports.createPayment = void 0;
 const client_1 = __importDefault(require("../prisma/client"));
 const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { reservationId, method, amount, proofUrl } = req.body;
+    const { reservationId, method, amount } = req.body;
     if (!reservationId || !method || !amount) {
         return res.status(400).json({
             code: 400,
@@ -46,6 +46,8 @@ const createPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
                 status: "gagal",
             });
         }
+        const photoUrl = req.file;
+        const proofUrl = photoUrl ? photoUrl.path : null;
         const payment = yield client_1.default.payment.create({
             data: {
                 reservationId,
@@ -103,7 +105,7 @@ const getAllPayments = (_req, res) => __awaiter(void 0, void 0, void 0, function
 exports.getAllPayments = getAllPayments;
 const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
-    const { status, method, proofUrl, paidAt, paymentSender } = req.body;
+    const { status, method, paidAt, paymentSender } = req.body;
     // Validate status if provided
     if (status && !["PAID", "HALF_PAID", "UNPAID", "REFUNDED"].includes(status)) {
         return res.status(400).json({
@@ -124,14 +126,16 @@ const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
                 status: "failed",
             });
         }
+        const photoUrl = req.file;
+        const proofUrl = photoUrl ? photoUrl.path : null;
         // If proofUrl in DB is still empty/null, request must include proofUrl
-        if (!existingPayment.proofUrl && (!proofUrl || proofUrl.trim() === "")) {
-            return res.status(400).json({
-                code: 400,
-                message: "Payment proof (proofUrl) is required",
-                status: "failed",
-            });
-        }
+        // if (!existingPayment.proofUrl && (!proofUrl || (proofUrl && proofUrl.trim() === ""))) {
+        // 	return res.status(400).json({
+        // 		code: 400,
+        // 		message: "Payment proof (proofUrl) is required",
+        // 		status: "failed",
+        // 	});
+        // }
         if (!paymentSender) {
             return res.status(400).json({
                 code: 400,
